@@ -793,6 +793,20 @@ class PropertiesPanel(QWidget):
                 ),
             ),
         )
+        self._ptz_username = QLineEdit()
+        self._ptz_username.setPlaceholderText("admin")
+        self._ptz_username.setToolTip(
+            "Username for PTZ backends such as ONVIF, independent of video credentials."
+        )
+        self._ptz_username.editingFinished.connect(self._schedule)
+        apf.addRow("Username", self._ptz_username)
+        self._ptz_password = QLineEdit()
+        self._ptz_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self._ptz_password.setToolTip(
+            "Password for PTZ backends such as ONVIF, independent of video credentials."
+        )
+        self._ptz_password.editingFinished.connect(self._schedule)
+        apf.addRow("Password", self._ptz_password)
         self._ptz_baud = QComboBox()
         self._ptz_baud.setEditable(True)
         self._ptz_baud.addItems(["9600", "38400", "115200"])
@@ -1289,6 +1303,8 @@ class PropertiesPanel(QWidget):
             _set_combo(self._backend, "auto" if is_center_stage else backend)
             self._backend.setEnabled(not is_center_stage)
             self._ptz_address.setText(pz.get("address") or "")
+            self._ptz_username.setText(pz.get("username", ""))
+            self._ptz_password.setText(pz.get("password", ""))
             self._ptz_baud.setCurrentText(str(pz.get("baud", 9600)))
             self._auto_zoom.setChecked(bool(pz.get("auto_zoom", False)))
             self._vcam_out.setChecked(bool(pz.get("vcam_out", False)))
@@ -1410,6 +1426,8 @@ class PropertiesPanel(QWidget):
             "digital" if self._center_stage.isChecked() else self._backend.currentText()
         )
         cfg["ptz"]["address"] = self._ptz_address.text().strip() or None
+        cfg["ptz"]["username"] = self._ptz_username.text().strip()
+        cfg["ptz"]["password"] = self._ptz_password.text()
         try:
             cfg["ptz"]["baud"] = int(str(self._ptz_baud.currentText()).strip())
         except (TypeError, ValueError):

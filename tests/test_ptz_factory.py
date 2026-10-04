@@ -156,6 +156,39 @@ class TestFactoryDispatch:
         assert b is not None
         assert seen["host"] == "10.0.0.5"
         assert seen["port"] == 8080
+        assert seen["username"] == "admin"
+        assert seen["password"] == ""
+
+    @pytest.mark.parametrize("backend", ["onvif", "auto"])
+    def test_onvif_configured_credentials(self, monkeypatch, backend) -> None:
+        from unittest.mock import Mock
+
+        ctor = Mock(return_value=RecordingBackend())
+        monkeypatch.setattr("autoptz.engine.ptz.onvif_ptz.ONVIFPTZBackend", ctor)
+        cfg = _cfg(
+            backend=backend,
+            address="192.168.1.85:2000",
+            username="ptz-user",
+            password=" secret with spaces ",
+        )
+        assert build_backend(cfg) is ctor.return_value
+        ctor.assert_called_once_with(
+            "192.168.1.85", 2000, username="ptz-user", password=" secret with spaces "
+        )
+
+    def test_onvif_error_details(self, monkeypatch, caplog) -> None:
+        def boom(*args, **kwargs):
+            raise RuntimeError("HTTP Error: 401 Unauthorized")
+
+        monkeypatch.setattr("autoptz.engine.ptz.onvif_ptz.ONVIFPTZBackend", boom)
+        cfg = _cfg(backend="onvif", address="192.168.1.85:2000", password="private-password")
+        assert build_backend(cfg) is None
+        assert (
+            "ONVIF 192.168.1.85:2000 unavailable; PTZ disabled: HTTP Error: 401 Unauthorized"
+            in caplog.text
+        )
+        assert caplog.records[-1].exc_info is not None
+        assert "private-password" not in caplog.text
 
     def test_unknown_backend_returns_none(self) -> None:
         # bypass the Literal validation by constructing then mutating via a dict
@@ -167,6 +200,46 @@ class TestFactoryDispatch:
 # ─────────────────────────────────────────────────────────────────────────────
 # Graceful failure — never raises
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("field,value", [("username", "operator"), ("password", " new secret ")])
+def test_live_ptz_credentials_rebuild(monkeypatch, field, value):
+    from unittest.mock import Mock
+
+    worker = _worker()
+    rebuild = Mock()
+    monkeypatch.setattr(worker, "_rebuild_ptz_backend", rebuild)
+    updated = worker.config.model_copy(
+        update={"ptz": worker.config.ptz.model_copy(update={field: value})}
+    )
+    worker._apply_command("update_config", updated)
+    rebuild.assert_called_once_with()
+    assert getattr(worker.config.ptz, field) == value
+    rebuild.reset_mock()
+    worker._apply_command("update_config", updated)
+    rebuild.assert_not_called()
+
+
+def test_worker_build_uses_only_ptz_credentials(monkeypatch):
+    from unittest.mock import Mock
+
+    worker = _worker()
+    worker.config = worker.config.model_copy(update={
+        "source": worker.config.source.model_copy(update={
+            "type": "rtsp", "username": "video-user", "password": "video-secret",
+        }),
+        "ptz": PTZConfig(
+            backend="onvif", address="192.168.1.85:2000",
+            username="ptz-user", password="ptz-secret",
+        ),
+    })
+    ctor = Mock(return_value=RecordingBackend())
+    monkeypatch.setattr("autoptz.engine.ptz.onvif_ptz.ONVIFPTZBackend", ctor)
+    worker._build_ptz_stack()
+    ctor.assert_called_once_with(
+        "192.168.1.85", 2000, username="ptz-user", password="ptz-secret"
+    )
+    assert worker._ptz_backend is ctor.return_value
 
 
 class TestFactoryGraceful:

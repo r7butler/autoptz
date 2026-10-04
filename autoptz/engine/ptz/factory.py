@@ -206,8 +206,14 @@ def _build_onvif(ptz: PTZConfig) -> PTZBackend | None:
     username, password = _split_credentials(ptz)
     try:
         backend = ONVIFPTZBackend(host, port, username=username, password=password)
-    except Exception:  # noqa: BLE001 - onvif-zeep missing / device unreachable
-        log.warning("ONVIF %s:%d unavailable; PTZ disabled.", host, port, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - onvif-zeep missing / device unreachable
+        log.warning(
+            "ONVIF %s:%d unavailable; PTZ disabled: %s",
+            host,
+            port,
+            exc,
+            exc_info=True,
+        )
         return None
     log.info("PTZ backend: ONVIF on %s:%d", host, port)
     return backend

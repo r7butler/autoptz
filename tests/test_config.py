@@ -30,6 +30,21 @@ from autoptz.config.models import (
 )
 from autoptz.config.store import ConfigStore
 
+
+def test_ptz_credentials_roundtrip_and_repr():
+    cfg = PTZConfig(username="operator", password=" private-password ")
+    restored = PTZConfig.model_validate_json(cfg.model_dump_json())
+    assert restored.username == "operator"
+    assert restored.password == " private-password "
+    assert "private-password" not in repr(cfg)
+    assert "private-password" not in str(cfg)
+
+
+def test_legacy_ptz_credentials_defaults():
+    cfg = PTZConfig.model_validate({"backend": "onvif", "address": "cam:2000"})
+    assert cfg.username == ""
+    assert cfg.password == ""
+
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
 
